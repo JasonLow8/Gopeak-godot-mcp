@@ -9,183 +9,59 @@ func set_editor_plugin(plugin: EditorPlugin) -> void:
 
 
 func _refresh_and_reload(scene_path: String) -> void:
-	_refresh_filesystem()
-	_reload_scene_in_editor(scene_path)
+	MCPSceneUtils.refresh_and_reload(_editor_plugin, scene_path)
 
 
 func _refresh_filesystem() -> void:
-	if _editor_plugin:
-		_editor_plugin.get_editor_interface().get_resource_filesystem().scan()
+	MCPSceneUtils._refresh_filesystem(_editor_plugin)
 
 
 func _reload_scene_in_editor(scene_path: String) -> void:
-	if not _editor_plugin:
-		return
-	var ei := _editor_plugin.get_editor_interface()
-	var edited := ei.get_edited_scene_root()
-	if edited and edited.scene_file_path == scene_path:
-		ei.reload_scene_from_path(scene_path)
+	MCPSceneUtils._reload_scene_in_editor(_editor_plugin, scene_path)
 
 
 func _ensure_res_path(path: String) -> String:
-	if not path.begins_with("res://"):
-		return "res://" + path
-	return path
+	return MCPSceneUtils.ensure_res_path(path)
 
 
 func _to_scene_res_path(project_path: String, scene_path: String) -> String:
-	var p := scene_path.strip_edges()
-	if p.begins_with("res://"):
-		return p
-
-	if project_path.strip_edges() != "":
-		var normalized_project := project_path.replace("\\", "/")
-		var normalized_scene := p.replace("\\", "/")
-		if normalized_scene.begins_with(normalized_project):
-			var rel := normalized_scene.substr(normalized_project.length())
-			if rel.begins_with("/"):
-				rel = rel.substr(1)
-			return _ensure_res_path(rel)
-
-	return _ensure_res_path(p)
+	return MCPSceneUtils.to_scene_res_path(project_path, scene_path)
 
 
 func _load_scene(scene_path: String) -> Array:
-	if scene_path.strip_edges().is_empty():
-		return [null, {"ok": false, "error": "Missing scenePath"}]
-	if not FileAccess.file_exists(scene_path):
-		return [null, {"ok": false, "error": "Scene not found: " + scene_path}]
-	var packed := load(scene_path) as PackedScene
-	if not packed:
-		return [null, {"ok": false, "error": "Failed to load: " + scene_path}]
-	var root := packed.instantiate()
-	if not root:
-		return [null, {"ok": false, "error": "Failed to instantiate: " + scene_path}]
-	return [root, {}]
+	return MCPSceneUtils.load_scene(scene_path)
 
 
 func _save_scene(scene_root: Node, scene_path: String) -> Dictionary:
-	var packed := PackedScene.new()
-	if packed.pack(scene_root) != OK:
-		scene_root.queue_free()
-		return {"ok": false, "error": "Failed to pack scene"}
-	if ResourceSaver.save(packed, scene_path) != OK:
-		scene_root.queue_free()
-		return {"ok": false, "error": "Failed to save scene"}
-	scene_root.queue_free()
-	_refresh_and_reload(scene_path)
-	return {}
+	return MCPSceneUtils.save_scene(scene_root, scene_path, _editor_plugin)
 
 
 func _find_node(root: Node, path: String) -> Node:
-	if path == "." or path.is_empty():
-		return root
-	return root.get_node_or_null(path)
+	return MCPSceneUtils.find_node(root, path)
 
 
 func _parse_value(value, expected_type: int = TYPE_NIL):
-	if typeof(value) == TYPE_DICTIONARY:
-		var type_tag := ""
-		if value.has("type"):
-			type_tag = str(value["type"])
-		elif value.has("_type"):
-			type_tag = str(value["_type"])
-
-		if not type_tag.is_empty():
-			match type_tag:
-				"Vector2":
-					return Vector2(value.get("x", 0), value.get("y", 0))
-				"Vector3":
-					return Vector3(value.get("x", 0), value.get("y", 0), value.get("z", 0))
-				"Color":
-					return Color(value.get("r", 1), value.get("g", 1), value.get("b", 1), value.get("a", 1))
-				"Vector2i":
-					return Vector2i(value.get("x", 0), value.get("y", 0))
-				"Vector3i":
-					return Vector3i(value.get("x", 0), value.get("y", 0), value.get("z", 0))
-
-		match expected_type:
-			TYPE_VECTOR2:
-				if value.has("x") and value.has("y"):
-					return Vector2(value.get("x", 0), value.get("y", 0))
-			TYPE_VECTOR2I:
-				if value.has("x") and value.has("y"):
-					return Vector2i(value.get("x", 0), value.get("y", 0))
-			TYPE_VECTOR3:
-				if value.has("x") and value.has("y") and value.has("z"):
-					return Vector3(value.get("x", 0), value.get("y", 0), value.get("z", 0))
-			TYPE_VECTOR3I:
-				if value.has("x") and value.has("y") and value.has("z"):
-					return Vector3i(value.get("x", 0), value.get("y", 0), value.get("z", 0))
-			TYPE_COLOR:
-				if value.has("r") and value.has("g") and value.has("b"):
-					return Color(value.get("r", 1), value.get("g", 1), value.get("b", 1), value.get("a", 1))
-	if typeof(value) == TYPE_ARRAY:
-		match expected_type:
-			TYPE_VECTOR2:
-				if value.size() >= 2:
-					return Vector2(value[0], value[1])
-			TYPE_VECTOR2I:
-				if value.size() >= 2:
-					return Vector2i(value[0], value[1])
-			TYPE_VECTOR3:
-				if value.size() >= 3:
-					return Vector3(value[0], value[1], value[2])
-			TYPE_VECTOR3I:
-				if value.size() >= 3:
-					return Vector3i(value[0], value[1], value[2])
-		var result: Array = []
-		for item in value:
-			result.append(_parse_value(item))
-		return result
-	return value
+	return MCPSceneUtils.parse_value(value, expected_type)
 
 
 func _get_property_type(node: Node, prop_name: String) -> int:
-	for prop in node.get_property_list():
-		if str(prop.get("name", "")) == prop_name:
-			return int(prop.get("type", TYPE_NIL))
-	return TYPE_NIL
+	return MCPSceneUtils.get_property_type(node, prop_name)
 
 
 func _set_node_properties(node: Node, properties: Dictionary) -> void:
-	for prop_name in properties:
-		var expected_type := _get_property_type(node, str(prop_name))
-		var val = _parse_value(properties[prop_name], expected_type)
-		node.set(prop_name, val)
+	MCPSceneUtils.set_node_properties(node, properties)
 
 
 func _serialize_value(value) -> Variant:
-	match typeof(value):
-		TYPE_VECTOR2:
-			return {"type": "Vector2", "x": value.x, "y": value.y}
-		TYPE_VECTOR3:
-			return {"type": "Vector3", "x": value.x, "y": value.y, "z": value.z}
-		TYPE_COLOR:
-			return {"type": "Color", "r": value.r, "g": value.g, "b": value.b, "a": value.a}
-		TYPE_VECTOR2I:
-			return {"type": "Vector2i", "x": value.x, "y": value.y}
-		TYPE_VECTOR3I:
-			return {"type": "Vector3i", "x": value.x, "y": value.y, "z": value.z}
-		TYPE_OBJECT:
-			if value and value is Resource and value.resource_path:
-				return {"type": "Resource", "path": value.resource_path}
-			return null
-		_:
-			return value
+	return MCPSceneUtils.serialize_value(value)
 
 
 func _set_owner_recursive(node: Node, scene_owner: Node) -> void:
-	node.owner = scene_owner
-	for child in node.get_children():
-		if child is Node:
-			_set_owner_recursive(child as Node, scene_owner)
+	MCPSceneUtils.set_owner_recursive(node, scene_owner)
 
 
 func _ensure_parent_dir_for_scene(scene_path: String) -> void:
-	var base_dir := scene_path.get_base_dir()
-	if not DirAccess.dir_exists_absolute(base_dir):
-		DirAccess.make_dir_recursive_absolute(base_dir)
+	MCPSceneUtils.ensure_parent_dir_for_scene(scene_path)
 
 
 func create_particles(args: Dictionary) -> Dictionary:

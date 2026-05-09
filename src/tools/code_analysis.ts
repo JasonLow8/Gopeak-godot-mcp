@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { relative as relativePath } from 'node:path';
+import { relative as relativePath, posix } from 'node:path';
 import { collectFiles } from './fs_utils';
 
 // ─── find_unused_resources ──────────────────────────────────────────
@@ -38,6 +38,31 @@ export function findUnusedResources(
     allResources.add(relPath);
   }
 
+  function normalizeResPath(p: string, currentFileResPath?: string): string {
+    if (!p) return p;
+    let stripped = p.trim();
+    if (stripped.startsWith('res://')) return stripped;
+
+    if (currentFileResPath) {
+      const baseDir = currentFileResPath.substring(0, currentFileResPath.lastIndexOf('/'));
+      const segments: string[] = [];
+      const parts = stripped.split('/');
+      for (const part of parts) {
+        if (part === '..') {
+          const popped = segments.pop();
+          if (popped === undefined) {
+            segments.push(part);
+          }
+        } else if (part !== '.') {
+          segments.push(part);
+        }
+      }
+      stripped = baseDir + '/' + segments.join('/');
+    }
+
+    return 'res://' + stripped;
+  }
+
   const allTextFiles = [...sceneFiles, ...scriptFiles];
   for (const f of allTextFiles) {
     let content: string;
@@ -52,13 +77,13 @@ export function findUnusedResources(
 
     const preloadRe = /(?:preload|load)\s*\(\s*"([^"]+)"/g;
     let m: RegExpExecArray | null;
-    while ((m = preloadRe.exec(content)) !== null) usages.add(m[1]);
+    while ((m = preloadRe.exec(content)) !== null) usages.add(normalizeResPath(m[1], fileRel));
 
     const extRe = /\[ext_resource.*?path="([^"]+)"/g;
-    while ((m = extRe.exec(content)) !== null) usages.add(m[1]);
+    while ((m = extRe.exec(content)) !== null) usages.add(normalizeResPath(m[1], fileRel));
 
-    const sceneInstanceRe = /(?:load|instance)\s*\(\s*"([^"]+\.tscn)"/g;
-    while ((m = sceneInstanceRe.exec(content)) !== null) usages.add(m[1]);
+    const sceneInstanceRe = /(?:load)\s*\(\s*"([^"]+\.tscn)"/g;
+    while ((m = sceneInstanceRe.exec(content)) !== null) usages.add(normalizeResPath(m[1], fileRel));
   }
 
   const unused: UnusedResource[] = [];
@@ -207,10 +232,6 @@ export function analyzeSceneComplexity(
 
       if (trimmed.startsWith('[node')) {
         nodeCount++;
-        const typeMatch = trimmed.match(/type="([^"]+)"/);
-        if (typeMatch && (typeMatch[1] === 'GDScript' || typeMatch[1].toLowerCase().includes('script'))) {
-          scriptCount++;
-        }
 
         const parentMatch = trimmed.match(/parent="([^"]+)"/);
         if (parentMatch) {
@@ -223,6 +244,8 @@ export function analyzeSceneComplexity(
         resourceCount++;
       } else if (trimmed.startsWith('[connection')) {
         connectionCount++;
+      } else if (trimmed.startsWith('script = ExtResource(') || trimmed.startsWith('script = SubResource(') || trimmed.includes('script/ExtResource') || trimmed.includes('script/SubResource')) {
+        scriptCount++;
       }
     }
 
@@ -451,13 +474,15 @@ export function getProjectStatistics(projectPath: string): GetProjectStatisticsR
 
     const lines = content.split('\n');
     let nodeCount = 0;
+    let resourceCount = 0;
     let scriptCount = 0;
     let connectionCount = 0;
 
     for (const line of lines) {
       if (line.includes('[node')) nodeCount++;
-      if (line.includes('[ext_resource') || line.includes('[sub_resource')) scriptCount++;
+      if (line.includes('[ext_resource') || line.includes('[sub_resource')) resourceCount++;
       if (line.includes('[connection')) connectionCount++;
+      if (line.includes('script = ExtResource(') || line.includes('script = SubResource(') || line.includes('script/ExtResource') || line.includes('script/SubResource')) scriptCount++;
 
       const typeMatch = line.match(/type="([^"]+)"/);
       if (typeMatch) {
@@ -474,7 +499,7 @@ export function getProjectStatistics(projectPath: string): GetProjectStatisticsR
       largestScenePath = 'res://' + relativePath(projectPath, f).replace(/\\/g, '/');
     }
 
-    const score = nodeCount + scriptCount * 0.5 + connectionCount * 2;
+    const score = nodeCount + resourceCount * 0.5 + connectionCount * 2 + scriptCount * 3;
     if (score > 50) complexityCount.complex++;
     else if (score > 15) complexityCount.moderate++;
     else complexityCount.simple++;

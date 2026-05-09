@@ -9,115 +9,43 @@ func set_editor_plugin(plugin: EditorPlugin) -> void:
 
 
 func _refresh_and_reload(scene_path: String) -> void:
-	_refresh_filesystem()
-	_reload_scene_in_editor(scene_path)
+	MCPSceneUtils.refresh_and_reload(_editor_plugin, scene_path)
 
 
 func _refresh_filesystem() -> void:
-	if _editor_plugin:
-		_editor_plugin.get_editor_interface().get_resource_filesystem().scan()
+	MCPSceneUtils._refresh_filesystem(_editor_plugin)
 
 
 func _reload_scene_in_editor(scene_path: String) -> void:
-	if not _editor_plugin:
-		return
-	var ei := _editor_plugin.get_editor_interface()
-	var edited := ei.get_edited_scene_root()
-	if edited and edited.scene_file_path == scene_path:
-		ei.reload_scene_from_path(scene_path)
+	MCPSceneUtils._reload_scene_in_editor(_editor_plugin, scene_path)
 
 
 func _ensure_res_path(path: String) -> String:
-	if not path.begins_with("res://"):
-		return "res://" + path
-	return path
+	return MCPSceneUtils.ensure_res_path(path)
 
 
 func _to_scene_res_path(project_path: String, scene_path: String) -> String:
-	var p := scene_path.strip_edges()
-	if p.begins_with("res://"):
-		return p
-
-	if project_path.strip_edges() != "":
-		var normalized_project := project_path.replace("\\", "/")
-		var normalized_scene := p.replace("\\", "/")
-		if normalized_scene.begins_with(normalized_project):
-			var rel := normalized_scene.substr(normalized_project.length())
-			if rel.begins_with("/"):
-				rel = rel.substr(1)
-			return _ensure_res_path(rel)
-
-	return _ensure_res_path(p)
+	return MCPSceneUtils.to_scene_res_path(project_path, scene_path)
 
 
 func _load_scene(scene_path: String) -> Array:
-	if scene_path.strip_edges().is_empty():
-		return [null, {"ok": false, "error": "Missing scenePath"}]
-	if not FileAccess.file_exists(scene_path):
-		return [null, {"ok": false, "error": "Scene not found: " + scene_path}]
-	var packed := load(scene_path) as PackedScene
-	if not packed:
-		return [null, {"ok": false, "error": "Failed to load: " + scene_path}]
-	var root := packed.instantiate()
-	if not root:
-		return [null, {"ok": false, "error": "Failed to instantiate: " + scene_path}]
-	return [root, {}]
+	return MCPSceneUtils.load_scene(scene_path)
 
 
 func _save_scene(scene_root: Node, scene_path: String) -> Dictionary:
-	var packed := PackedScene.new()
-	if packed.pack(scene_root) != OK:
-		scene_root.queue_free()
-		return {"ok": false, "error": "Failed to pack scene"}
-	if ResourceSaver.save(packed, scene_path) != OK:
-		scene_root.queue_free()
-		return {"ok": false, "error": "Failed to save scene"}
-	scene_root.queue_free()
-	_refresh_and_reload(scene_path)
-	return {}
+	return MCPSceneUtils.save_scene(scene_root, scene_path, _editor_plugin)
 
 
 func _set_owner_safe(node: Node, scene_root: Node) -> void:
-	if node == null or scene_root == null:
-		return
-	node.owner = scene_root
-	for child in node.get_children():
-		if child is Node:
-			_set_owner_safe(child as Node, scene_root)
+	MCPSceneUtils.set_owner_recursive(node, scene_root)
 
 
 func _find_node(root: Node, path: String) -> Node:
-	if path == "." or path.is_empty():
-		return root
-	return root.get_node_or_null(path)
+	return MCPSceneUtils.find_node(root, path)
 
 
 func _parse_value(value, expected_type: int = TYPE_NIL):
-	if typeof(value) == TYPE_DICTIONARY:
-		var type_tag := ""
-		if value.has("type"):
-			type_tag = str(value["type"])
-		elif value.has("_type"):
-			type_tag = str(value["_type"])
-
-		if not type_tag.is_empty():
-			match type_tag:
-				"Vector2":
-					return Vector2(value.get("x", 0), value.get("y", 0))
-				"Vector3":
-					return Vector3(value.get("x", 0), value.get("y", 0), value.get("z", 0))
-				"Color":
-					return Color(value.get("r", 1), value.get("g", 1), value.get("b", 1), value.get("a", 1))
-
-		match expected_type:
-			TYPE_VECTOR2:
-				return Vector2(value.get("x", 0), value.get("y", 0))
-			TYPE_VECTOR3:
-				return Vector3(value.get("x", 0), value.get("y", 0), value.get("z", 0))
-			TYPE_COLOR:
-				return Color(value.get("r", 1), value.get("g", 1), value.get("b", 1), value.get("a", 1))
-
-	return value
+	return MCPSceneUtils.parse_value(value, expected_type)
 
 
 func add_sprite_2d(args: Dictionary) -> Dictionary:

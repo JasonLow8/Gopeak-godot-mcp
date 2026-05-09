@@ -267,7 +267,7 @@ export function crossSceneSetProperty(
   });
 
   const nodeName = nodePath.split('/').pop() ?? nodePath;
-  const valueStr = JSON.stringify(propertyValue);
+  const valueStr = serializeGodotValue(propertyValue);
 
   for (const sceneFile of sceneFiles) {
     let content: string;
@@ -354,7 +354,7 @@ export function batchSetProperty(
     let nodeBlock = nodeMatch[0];
 
     for (const [propName, propValue] of Object.entries(properties)) {
-      const valueStr = JSON.stringify(propValue);
+      const valueStr = serializeGodotValue(propValue);
       const propRe = new RegExp(`^${escapeRegex(propName)}\\s*=\\s*.+$`, 'm');
       if (propRe.test(nodeBlock)) {
         nodeBlock = nodeBlock.replace(propRe, `${propName} = ${valueStr}`);
@@ -434,4 +434,47 @@ export function getSceneDependencies(
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function serializeGodotValue(value: unknown): string {
+  if (value === null || value === undefined) return 'null';
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') return JSON.stringify(value);
+
+  if (Array.isArray(value)) {
+    if (value.length === 2) return `Vector2(${value[0]}, ${value[1]})`;
+    if (value.length === 3) return `Vector3(${value[0]}, ${value[1]}, ${value[2]})`;
+    return `[${value.map(v => serializeGodotValue(v)).join(', ')}]`;
+  }
+
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if ('r' in obj && 'g' in obj && 'b' in obj && 'a' in obj) {
+      return `Color(${obj.r}, ${obj.g}, ${obj.b}, ${obj.a})`;
+    }
+    if ('x' in obj && 'y' in obj && 'z' in obj) {
+      return `Vector3(${obj.x}, ${obj.y}, ${obj.z})`;
+    }
+    if ('x' in obj && 'y' in obj && 'width' in obj && 'height' in obj) {
+      return `Rect2(${obj.x}, ${obj.y}, ${obj.width}, ${obj.height})`;
+    }
+    if ('x' in obj && 'y' in obj) {
+      return `Vector2(${obj.x}, ${obj.y})`;
+    }
+    if ('x' in obj && 'y' in obj && 'origin' in obj) {
+      const xx = obj.x as Record<string, number>;
+      const yy = obj.y as Record<string, number>;
+      const oo = obj.origin as Record<string, number>;
+      return `Transform2D(${xx.x}, ${xx.y}, ${yy.x}, ${yy.y}, ${oo.x}, ${oo.y})`;
+    }
+    if ('basis' in obj && 'origin' in obj) {
+      const b = obj.basis as Record<string, Record<string, number>>;
+      const o = obj.origin as Record<string, number>;
+      return `Transform3D(${b.x.x}, ${b.x.y}, ${b.x.z}, ${b.y.x}, ${b.y.y}, ${b.y.z}, ${b.z.x}, ${b.z.y}, ${b.z.z}, ${o.x}, ${o.y}, ${o.z})`;
+    }
+    return JSON.stringify(value);
+  }
+
+  return JSON.stringify(value);
 }
