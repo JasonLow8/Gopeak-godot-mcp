@@ -214,6 +214,16 @@ async function main() {
   testSceneToolsVectorRegression();
   assert.match(INDEX_SOURCE, /key\.startsWith\('_'\)/, 'index.ts should preserve sentinel keys like _type during parameter normalization');
   assert.match(INDEX_SOURCE, /@file:/, 'index.ts should pass operation params via @file: temp payloads');
+  assert.match(
+    INDEX_SOURCE,
+    /const cmdArgs = \['-d', '--path', args\.projectPath\];/,
+    'run_project should launch a visible game process instead of forcing --headless',
+  );
+  assert.doesNotMatch(
+    INDEX_SOURCE,
+    /const cmdArgs = \['--headless', '-d', '--path', args\.projectPath\];/,
+    'run_project must not include --headless in its game spawn args',
+  );
   assert.match(OPERATIONS_SOURCE, /params_json\.begins_with\("@file:"\)/, 'godot_operations.gd should load params from @file: payloads');
   assert.match(
     RUNTIME_SOURCE,
@@ -239,6 +249,16 @@ async function main() {
     RUNTIME_SOURCE,
     /if keycode_raw is String and not \(keycode_raw as String\)\.is_empty\(\) and key_label\.is_empty\(\):\s*\n\s*key_label = keycode_raw as String/m,
     'runtime key injection should treat string keycode values as key labels',
+  );
+  assert.match(
+    RUNTIME_SOURCE,
+    /deserialized_args = _coerce_method_args\(node, method, deserialized_args\)/,
+    'runtime call_method should coerce JSON arguments before typed GDScript callv',
+  );
+  assert.match(
+    RUNTIME_SOURCE,
+    /func _coerce_value_to_variant_type\(value: Variant, target_type: int\) -> Variant:[\s\S]*TYPE_INT:[\s\S]*\(value as String\)\.is_valid_int\(\)[\s\S]*return int\(value\)/,
+    'runtime method argument coercion should convert integer strings for typed int parameters',
   );
 
   await testEditorStatusPortConflict();
