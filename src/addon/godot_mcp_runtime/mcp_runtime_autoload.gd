@@ -295,6 +295,7 @@ func _cmd_call_method(params: Dictionary) -> Dictionary:
 	var deserialized_args = []
 	for arg in args:
 		deserialized_args.append(_deserialize_value(arg))
+	deserialized_args = _coerce_method_args(node, method, deserialized_args)
 
 	var result = null
 	var call_ok = true
@@ -707,6 +708,51 @@ func _deserialize_value(value) -> Variant:
 		return arr
 	else:
 		return value
+
+
+func _coerce_method_args(node: Object, method: String, args: Array) -> Array:
+	var method_args: Array = []
+	for info in node.get_method_list():
+		if String(info.get("name", "")) == method:
+			method_args = info.get("args", [])
+			break
+
+	if method_args.is_empty():
+		return args
+
+	var coerced: Array = []
+	for i in range(args.size()):
+		var value = args[i]
+		if i < method_args.size():
+			var arg_info: Dictionary = method_args[i]
+			value = _coerce_value_to_variant_type(value, int(arg_info.get("type", TYPE_NIL)))
+		coerced.append(value)
+	return coerced
+
+
+func _coerce_value_to_variant_type(value: Variant, target_type: int) -> Variant:
+	if value == null or target_type == TYPE_NIL or typeof(value) == target_type:
+		return value
+
+	match target_type:
+		TYPE_BOOL:
+			if value is String:
+				var normalized = (value as String).strip_edges().to_lower()
+				if normalized in ["true", "1", "yes", "on"]:
+					return true
+				if normalized in ["false", "0", "no", "off"]:
+					return false
+			return bool(value)
+		TYPE_INT:
+			if value is String and (value as String).is_valid_int():
+				return int(value)
+		TYPE_FLOAT:
+			if value is String and (value as String).is_valid_float():
+				return float(value)
+		TYPE_STRING:
+			return str(value)
+
+	return value
 
 
 func _resolve_mouse_button(raw: Variant) -> int:
