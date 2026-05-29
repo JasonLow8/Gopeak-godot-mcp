@@ -66,6 +66,12 @@ jobs:
       - name: Verify Godot installation
         run: godot --headless --version
 
+      - name: Setup virtual display
+        run: |
+          sudo apt-get install -y xvfb
+          Xvfb :99 -screen 0 1280x1024x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
       - name: Install dependencies
         run: npm ci
 

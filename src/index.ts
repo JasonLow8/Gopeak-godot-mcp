@@ -2100,11 +2100,7 @@ class GodotServer {
         this.activeProcess.process.kill();
       }
 
-      const env = globalThis.process.env;
-      const needsHeadless =
-        !!env.CI ||
-        (globalThis.process.platform === 'linux' && !env.DISPLAY);
-      const cmdArgs = [...(needsHeadless ? ['--headless'] : []), '-d', '--path', args.projectPath];
+      const cmdArgs = ['-d', '--path', args.projectPath];
       if (args.scene && this.validatePath(args.scene)) {
         this.logDebug(`Adding scene parameter: ${args.scene}`);
         cmdArgs.push(args.scene);
