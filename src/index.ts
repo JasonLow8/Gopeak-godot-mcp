@@ -1821,10 +1821,30 @@ class GodotServer {
           return await this.handleRuntimeCommand('inject_action', request.params.arguments);
         case 'inject_key':
           return await this.handleRuntimeCommand('inject_key', request.params.arguments);
-        case 'inject_mouse_click':
-          return await this.handleRuntimeCommand('inject_mouse_click', request.params.arguments);
-        case 'inject_mouse_motion':
-          return await this.handleRuntimeCommand('inject_mouse_motion', request.params.arguments);
+        case 'inject_mouse_click': {
+          // Tool schema exposes flat {x, y, button, pressed, doubleClick} but the
+          // GDScript runtime expects {position: [x, y], button: int, pressed, double_click}.
+          const clickRaw = (request.params.arguments || {}) as Record<string, unknown>;
+          const btnStr = String(clickRaw.button ?? 'left').toLowerCase();
+          const btnInt = btnStr === 'right' ? 2 : btnStr === 'middle' ? 3 : 1;
+          const clickParams = {
+            position: [Number(clickRaw.x ?? 0), Number(clickRaw.y ?? 0)],
+            button: btnInt,
+            pressed: clickRaw.pressed !== false,
+            double_click: Boolean(clickRaw.doubleClick ?? false),
+          };
+          return await this.handleRuntimeCommand('inject_mouse_click', clickParams);
+        }
+        case 'inject_mouse_motion': {
+          // Tool schema exposes flat {x, y, relativeX, relativeY} but the
+          // GDScript runtime expects {position: [x, y], relative: [rx, ry]}.
+          const motionRaw = (request.params.arguments || {}) as Record<string, unknown>;
+          const motionParams = {
+            position: [Number(motionRaw.x ?? 0), Number(motionRaw.y ?? 0)],
+            relative: [Number(motionRaw.relativeX ?? 0), Number(motionRaw.relativeY ?? 0)],
+          };
+          return await this.handleRuntimeCommand('inject_mouse_motion', motionParams);
+        }
         // Phase 1 closed-loop runtime testing tools
         case 'wait_for_node':
           return await handleWaitForNode(request.params.arguments, this.getRuntimeTestDeps());
@@ -2080,7 +2100,11 @@ class GodotServer {
         this.activeProcess.process.kill();
       }
 
-      const cmdArgs = ['-d', '--path', args.projectPath];
+      const env = globalThis.process.env;
+      const needsHeadless =
+        !!env.CI ||
+        (globalThis.process.platform === 'linux' && !env.DISPLAY);
+      const cmdArgs = [...(needsHeadless ? ['--headless'] : []), '-d', '--path', args.projectPath];
       if (args.scene && this.validatePath(args.scene)) {
         this.logDebug(`Adding scene parameter: ${args.scene}`);
         cmdArgs.push(args.scene);

@@ -482,13 +482,17 @@ func _cmd_inject_mouse_click(params: Dictionary) -> Dictionary:
 	var button: int = _resolve_mouse_button(params.get("button", MOUSE_BUTTON_LEFT))
 	var pressed = bool(params.get("pressed", true))
 
+	var double_click = bool(params.get("double_click", false))
+
 	var event = InputEventMouseButton.new()
 	event.position = position
 	event.global_position = position
 	event.button_index = button
 	event.pressed = pressed
-	Input.parse_input_event(event)
-	
+	event.double_click = double_click
+	# push_input routes through the GUI pipeline so Control/Button nodes receive it.
+	get_viewport().push_input(event)
+
 	return {
 		"type": "input_injected",
 		"input_type": "mouse_click",
@@ -529,7 +533,8 @@ func _cmd_inject_mouse_motion(params: Dictionary) -> Dictionary:
 	event.position = position
 	event.global_position = position
 	event.relative = relative
-	Input.parse_input_event(event)
+	# push_input routes through the GUI pipeline so hover/focus states update correctly.
+	get_viewport().push_input(event)
 	
 	return {
 		"type": "input_injected",
